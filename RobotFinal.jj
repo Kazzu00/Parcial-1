@@ -1,0 +1,282 @@
+/*
+Gramatica para el Robot:
+Autor: Alejandro Arango
+Modificado por: Silvia Takahashi
+Modificado por: Juan Pablo Morales.
+Agregadas producciones para manejar globos
+Modificado por Silvia Takahashi
+*/
+
+options /* Configuracion Inicial */
+{
+    LOOKAHEAD=1; 
+    IGNORE_CASE=true;
+    STATIC = false;
+}
+
+PARSER_BEGIN(Robot)
+
+package uniandes.lym.robot.control;
+
+import uniandes.lym.robot.kernel.*;
+import uniandes.lym.robot.view.Console;
+ 
+import java.awt.Point;
+import java.io.*;
+import java.util.Vector;
+import java.util.LinkedList;
+import java.util.HashMap;
+import java.util.List;
+
+@SuppressWarnings("serial")
+public class Robot 
+{
+    public HashMap<String,Integer> variables= new HashMap<>();
+    public HashMap<String,List<String>> macros= new HashMap<>();
+    
+    private RobotWorldDec world;
+    
+    void setWorld(RobotWorld w) {
+        world = (RobotWorldDec) w;    
+    }
+
+    String salida = new String();
+}
+PARSER_END(Robot)
+
+SKIP:
+{
+    " "
+    | "\r"
+    | "\t"
+    | "\n"
+}
+
+TOKEN:  /* Entradas */
+{
+      <EXEC:  "EXEC">
+    | <NEW: "NEW">
+    | <VAR: "VAR">
+    | <MACRO: "MACRO">
+}
+
+TOKEN:  /* Comandos */
+{
+      <MOV:  "Mov">
+    | <RIGHT: "RIGHT">
+    | <PUT: "Put">
+    | <PICK: "Pick">
+    | <POP: "Pop" >
+    | <GO: "GO" >
+    | <HOP:  "HOP" >        
+    | <TURNTOMY: "turnToMy">
+    | <TURNTOTHE: "turnToThe">
+    | <WALK: "walk">
+    | <JUMP: "jump">
+    | <DROP: "drop">
+    | <GRAB: "grab">
+    | <LETGO: "letgo">
+    | <NOP: "nop">
+    | <SAFEEXE:  "safeExe">        
+}
+
+TOKEN: /* Valores */
+{
+      < SIZE: "size" > 
+    | < MYX: "myX" >
+    | < MYY: "myY" >
+    | < MYCHIPS: "myChips" >
+    | < MYBALLOONS: "myBalloons" >
+    | < CHIPSHERE: "chipsHere" >
+    | < BALLOONSHERE: "balloonsHere" >
+    | < ROOMFORCHIPS: "roomForChips" >
+}
+
+TOKEN: /* Estructuras de control */
+{
+    < IF: "if" > 
+    | < THEN: "then" >
+    | < ELSE: "else" >
+    | < DO: "do" >
+    | < TIMES: "times" >
+    | < FI: "fi" >
+    | < OD: "od" >
+    | < PER: "per" >     
+}
+
+TOKEN: /* Condiciones */
+{
+    < ISBLOCKED: "isBlocked?" > 
+    | < ISFACING: "isFacing?" >
+    | < ZERO: "zero?" >
+    | < NOT: "not" >
+}
+
+TOKEN: /* Objetos */
+{
+    < BALLOONS:  "BALLOONS" >
+    | < CHIPS: "CHIPS" >    
+}
+
+TOKEN : /* Caracteres */
+{
+    < NUM: (<DIGIT>)+ >
+    | < #DIGIT: ["0"-"9"] >
+    | < NOMBRE: (<LETRA>)(<LETRA>|<DIGIT>)* >
+    | <#LETRA: ["a"-"z" | "A"-"Z"] >
+}
+
+boolean command(Console sistema):
+{
+    int x,y;
+    salida = new String();    
+}
+{
+    (
+        (
+            <RIGHT> "(" ")" {world.turnRight(); salida = "Command: Turnright";}
+        |   <MOV> "(" x=num() ")" {world.moveForward(x,false); salida = "Command: Moveforward ";}  
+        |   <HOP> "(" x=num() ")" {world.moveForward(x,true); salida = "Command: Jumpforward ";}
+        |   <GO> "(" x=num() "," y=num()")" {world.setPostion(x,y); salida = "Command: GO ";}  
+        |   <PUT> "("  put() ")"                       
+        |   <PICK> "(" get()  ")"    
+        |   <POP> "(" x=num() ")" {world.popBalloons(x); salida = "Comando:  Pop";}
+        |   <TURNTOMY> "(" ")" {world.turnToMyDirection(); salida = "Command: turnToMy"; }
+        |   <TURNTOTHE> "(" ")" {world.turnToTheDirection(); salida = "Command: turnToThe"; }
+        |   <WALK> "(" x=num() ")" {world.walk(x); salida = "Command: Walk"; }
+        |   <JUMP> "(" x=num() ")" {world.jump(x); salida = "Command: Jump"; }
+        |   <DROP> "(" x=num() ")" {world.drop(x); salida = "Command: Drop"; }
+        |   <GRAB> "(" x=num() ")" {world.grab(x); salida = "Command: Grab"; }
+        |   <LETGO> "(" x=num() ")" {world.letGo(x); salida = "Command: Let go"; }
+        )
+    ) ";"
+    {
+        try {
+            Thread.sleep(900);
+        } catch (InterruptedException e) {
+            System.err.format("IOException: %s%n", e);
+        }
+        
+        sistema.printOutput(salida);
+        return true;
+    })+
+    | <EOF> {return false;} 
+}
+
+void put() :
+{
+    int f = 1;    
+}
+{
+    ( <CHIPS> "," f=num() {world.putChips(f); salida = "Command: Put Chips";})
+    | ( <BALLOONS> "," f=num() {world.putBalloons(f); salida = "Command: Put Balloons";})     
+}
+
+void get() :
+{
+    int f = 1;    
+}
+{
+    ( <CHIPS> "," f=num() {world.pickChips(f); salida = "Command: Pick chips";})
+    | ( <BALLOONS> "," f=num() {world.grabBalloons(f); salida = "Command: Pick balloons";})     
+}
+
+void ifStatement():{}
+{
+    <IF> (condition())* | condition() <THEN> block() 
+    [ <ELSE> block() ] 
+    <FI>
+}
+
+void loopStatement():{}
+{
+    <DO> command() <TIMES> num() <OD> 
+}
+
+void condition():{}
+{
+    <ISBLOCKED> { if (!world.isBlocked()) return false; } 
+    | <ISFACING> "(" direction() ")" { if (!world.isFacing(direction())) return false; } 
+    | <ZERO> "(" num() ")" { if (num() != 0) return false; } 
+    | <NOT> condition() { return !condition(); }
+}
+
+String direction():
+{
+    String dir;
+}
+{
+    <NOMBRE> { dir = token.image; return dir; }
+}
+
+void declareVar():
+{
+    String varName;
+    int value;
+}
+{
+    <VAR> varName=<NOMBRE> "=" value=num() ";"
+    {
+        variables.put(varName, value);
+        salida = "Variable " + varName + " declared with value " + value;
+    }
+}
+
+void defineMacro():
+{
+    String macroName;
+    List<String> macroCommands = new LinkedList<>();
+}
+{
+    <MACRO> macroName=<NOMBRE> "{" 
+    (command() { macroCommands.add(salida); })* 
+    "}" 
+    {
+        macros.put(macroName, macroCommands);
+        salida = "Macro " + macroName + " defined with " + macroCommands.size() + " commands";
+    }
+}
+
+void execMacro():
+{
+    String macroName;
+}
+{
+    <EXEC> macroName=<NOMBRE> 
+    {
+        List<String> commands = macros.get(macroName);
+        if (commands != null) {
+            for (String cmd : commands) {
+                salida = "Executing command: " + cmd;
+            }
+        } else {
+            throw new Error("Macro " + macroName + " is not defined.");
+        }
+    }
+}
+
+/**
+ * Unsigned decimal number
+ * @return the corresponding value of the string
+ * @error  corresponding value is too large
+ */
+
+int num() throws Error:
+{
+    int total = 0;  
+}
+{
+    <NUM>
+    {
+        total = Integer.parseInt(token.image);
+    }
+    | <NOMBRE>
+    {
+        Integer value = variables.get(token.image);
+        if (value == null) {
+            throw new Error("Variable " + token.image + " is not declared.");
+        }
+        total = value;
+    }
+    return total;
+}
